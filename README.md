@@ -163,6 +163,28 @@ As in plain Julia, providing any inner constructor suppresses both the default i
 
 `propertynames`, `getproperty`, `setproperty!`, `==`, `isequal`, `hash`, `show`, `print`, `repr`, `deepcopy`, and `Dict`/`Set` use all behave as they would for a plain `struct`. The lower-level introspection APIs (`fieldnames`, `fieldtype`, `nfields`, `dump`) report the underlying storage slots (e.g. `_packed_fields_1::Pack8{…}`) rather than the user-visible names, since they are name-based and `getfield` is a builtin that can't be intercepted.
 
+### Type hierarchy
+
+`@packed` inserts an abstract type between the struct and the supertype you wrote. For `@packed struct Foo <: Bar`, the macro defines `abstract type AFoo <: Bar` and makes the struct `Foo <: AFoo`. The abstract type is named `A` followed by the struct name, lives in the same module, and serves as the dispatch anchor for the generated `getproperty`, `setproperty!`, `show`, and `ConstructionBase` methods. When no supertype is written, `AFoo <: Any`.
+
+The declared relationship still holds transitively (`Foo <: Bar` is true), so subtype tests and dispatch on `Bar` work unchanged. The observable difference is one extra level in the chain: `supertype(Foo)` returns `AFoo`, not `Bar`. Code that inspects the direct supertype, or that expects `AFoo` not to exist, has to account for this.
+
+```jldoctest
+julia> using PackedStructs, EmulatedBitIntegers
+julia> @emulate Int4
+julia> abstract type Bar end
+julia> @packed struct Foo <: Bar
+           a::Int4
+           b::Int4
+       end
+julia> Foo <: Bar
+true
+julia> supertype(Foo)
+AFoo
+julia> supertype(AFoo)
+Bar
+```
+
 ## Extending `pack`
 
 `PackedStructs.pack(T, x)` produces the integer bit pattern stored for `x` in a packed group. The default methods cover `Integer`s and `isbits` (non-tuple) structs. Adding a method lets you pack types that don't fall into either bucket — most usefully **non-`Integer` primitive types whose bits are their value**, such as floats or `Char`.
